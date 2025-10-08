@@ -244,7 +244,7 @@ function SpecificSlider({
             repeatDelay={500}
             repeatInterval={100}
             onPress={() => setValue(Math.min(max, value + bigStep))}
-            onHold={() => setValue(Math.min(max, value + smallStep))}
+            onHold={() => setValue(Math.min(max, value + bigStep))}
           >
             <Button
               variant="outline"
