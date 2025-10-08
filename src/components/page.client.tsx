@@ -203,7 +203,7 @@ export function ControlPanel() {
                 config.connections.length === 0 &&
                 config.name === "New User" && (
                   <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <span className="h-full w-full rounded border-4 border-yellow-500 opacity-10 animate-pulse z-10" />
+                    <span className="h-full w-full rounded-md border-4 border-yellow-500 opacity-10 animate-pulse z-10" />
                   </span>
                 )}
             </div>
