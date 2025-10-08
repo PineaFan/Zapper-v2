@@ -66,6 +66,7 @@ function ConnectionCard({
                 variant="ghost"
                 size="icon"
                 className="ml-2 h-6 w-8 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                aria-label="Edit Name"
               >
                 <EditIcon size={12} />
               </Button>
@@ -89,6 +90,7 @@ function ConnectionCard({
             size="sm"
             onClick={remove}
             className={cn("ml-2", remove === undefined ? "invisible" : "")}
+            aria-label="Remove User"
           >
             <XIcon size={16} />
           </Button>
@@ -370,7 +372,7 @@ export function ControlPanel() {
             <Link
               href="https://en.wikipedia.org/wiki/Risk-aware_consensual_kink"
               target="_blank"
-              className="text-blue-500 dark:text-blue-600 underline visited:text-purple-600"
+              className="text-blue-700 dark:text-blue-600 underline visited:text-purple-600 font-bold"
             >
               RACK
             </Link>{" "}
@@ -378,7 +380,7 @@ export function ControlPanel() {
             <Link
               href="https://www.burnettfoundation.org.nz/articles/sex/safe-sane-consensual/"
               target="_blank"
-              className="text-blue-500 dark:text-blue-600 underline visited:text-purple-600"
+              className="text-blue-700 dark:text-blue-600 underline visited:text-purple-600 font-bold"
             >
               SSC
             </Link>{" "}

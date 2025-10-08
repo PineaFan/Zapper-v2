@@ -199,6 +199,7 @@ export function DeviceCard({
                       !userOwnsIsolatedDevice(user)) ||
                     (isolatedUser !== null && isolatedUser !== user.id)
                   }
+                  aria-label="Toggle User"
                 />
                 <Label
                   htmlFor={`user-${user.id}`}
@@ -239,6 +240,7 @@ export function DeviceCard({
                       setSelectedDevices(maskedDevices);
                     }
                   }}
+                  aria-label={isolatedUser === user.id ? "Un-isolate User" : "Isolate User"}
                 >
                   <ChangeIcon
                     changeKey={`isolate-user-${isolatedUser}-${user.id}`}
@@ -269,6 +271,7 @@ export function DeviceCard({
                     variant="ghost"
                     size="sm"
                     className="h-6 w-8 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                    aria-label="Edit Name"
                   >
                     <EditIcon size={12} />
                   </Button>

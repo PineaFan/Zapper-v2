@@ -147,7 +147,10 @@ function SpecificSlider({
           {icon} {label}
           {tooltip && (
             <Tooltip>
-              <TooltipTrigger className="inline-block text-muted-foreground">
+              <TooltipTrigger
+                className="inline-block text-muted-foreground"
+                aria-label={`${label} info`}
+              >
                 <InfoIcon size={20} />
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-xs">
@@ -170,6 +173,7 @@ function SpecificSlider({
               }
             }}
             disabled={disabled}
+            aria-label={`${label} value`}
           />
           <span>{unit}</span>
         </div>
@@ -181,8 +185,9 @@ function SpecificSlider({
         min={min}
         max={max}
         step={smallStep}
+        aria-label={label}
       />
-      <div className="flex flex-row items-center justify-between">
+      <div className="flex flex-row items-center justify-between pt-1">
         <div className="flex flex-row items-center">
           <Button
             variant="outline"
@@ -190,6 +195,7 @@ function SpecificSlider({
             onClick={() => setValue(min)}
             disabled={value <= min || disabled}
             size="sm"
+            aria-label="Reset to Minimum"
           >
             <ArrowLeftToLineIcon />
           </Button>
@@ -204,6 +210,7 @@ function SpecificSlider({
               className="rounded-none"
               disabled={value <= min || disabled}
               size="sm"
+              aria-label="Decrease by Large Step"
             >
               <ArrowLeftIcon />
             </Button>
@@ -219,6 +226,7 @@ function SpecificSlider({
               className="rounded-l-none"
               disabled={value <= min || disabled}
               size="sm"
+              aria-label="Decrease by Small Step"
             >
               <ChevronLeftIcon />
             </Button>
@@ -236,6 +244,7 @@ function SpecificSlider({
               className="rounded-r-none"
               disabled={value >= max || disabled}
               size="sm"
+              aria-label="Increase by Small Step"
             >
               <ChevronRightIcon />
             </Button>
@@ -251,6 +260,7 @@ function SpecificSlider({
               className="rounded-none"
               disabled={value >= max || disabled}
               size="sm"
+              aria-label="Increase by Large Step"
             >
               <ArrowRightIcon />
             </Button>
@@ -261,6 +271,7 @@ function SpecificSlider({
             onClick={() => setValue(max)}
             disabled={value >= max || disabled}
             size="sm"
+            aria-label="Set to Maximum"
           >
             <ArrowRightToLineIcon />
           </Button>
