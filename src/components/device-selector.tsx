@@ -1,6 +1,6 @@
 "use client";
 
-import type { Config, User } from "@/lib/types";
+import type { Config, Device, User } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import {
   Table2Icon,
@@ -12,6 +12,8 @@ import {
   SaveIcon,
   ListIndentIncreaseIcon,
   ListXIcon,
+  Plus,
+  ListIcon,
 } from "lucide-react";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
@@ -30,6 +32,8 @@ import {
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { ChangeIcon } from "./change-icon";
+import { ImportDevice, ModifyDevice } from "./config";
+import { v4 } from "uuid";
 
 const icons = {
   enabled: {
@@ -240,7 +244,11 @@ export function DeviceCard({
                       setSelectedDevices(maskedDevices);
                     }
                   }}
-                  aria-label={isolatedUser === user.id ? "Un-isolate User" : "Isolate User"}
+                  aria-label={
+                    isolatedUser === user.id
+                      ? "Un-isolate User"
+                      : "Isolate User"
+                  }
                 >
                   <ChangeIcon
                     changeKey={`isolate-user-${isolatedUser}-${user.id}`}
@@ -252,7 +260,7 @@ export function DeviceCard({
                     )}
                   </ChangeIcon>
                 </Button>
-                <EditNameDialog
+                <EditUserDialog
                   currentName={user.name}
                   setName={(name) => {
                     if (user.id === config.id) {
@@ -266,6 +274,19 @@ export function DeviceCard({
                       });
                     }
                   }}
+                  devices={user.devices}
+                  setDevices={(devices) => {
+                    if (user.id === config.id) {
+                      setConfig({ ...config, devices });
+                    } else {
+                      setConfig({
+                        ...config,
+                        connections: config.connections.map((c) =>
+                          c.id === user.id ? { ...c, devices } : c
+                        ),
+                      });
+                    }
+                  }}
                 >
                   <Button
                     variant="ghost"
@@ -275,7 +296,7 @@ export function DeviceCard({
                   >
                     <EditIcon size={12} />
                   </Button>
-                </EditNameDialog>
+                </EditUserDialog>
                 <div className="flex-1" />
                 <Badge variant="outline" className="text-xs">
                   {getEnabledDeviceCount(user)} / {user.devices.length} enabled
@@ -425,29 +446,106 @@ export function DeviceCard({
   );
 }
 
-export function EditNameDialog({
-  setName,
-  currentName,
-  children,
-}: {
+type EditUserDialogProps = {
   setName: (name: string) => void;
   currentName: string;
   children: React.ReactNode;
-}) {
+} & (
+  | { setDevices: (devices: Device[]) => void; devices: Device[] }
+  | { setDevices?: undefined; devices?: undefined }
+);
+
+export function EditUserDialog({
+  setName,
+  currentName,
+  children,
+  setDevices,
+  devices,
+}: EditUserDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [nameInput, setNameInput] = useState(currentName);
+
+  // Ensure both devices and setDevices are either present or absent
+  if ((devices && !setDevices) || (!devices && setDevices)) {
+    throw new Error(
+      "EditUserDialog: devices and setDevices must both be provided or both be omitted."
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit Name</DialogTitle>
-          <DialogDescription>Change the name of the user.</DialogDescription>
+          <DialogTitle>Edit User</DialogTitle>
+          <DialogDescription>Edit users name and devices.</DialogDescription>
         </DialogHeader>
         <Input
           value={nameInput}
           onChange={(e) => setNameInput(e.target.value)}
         />
+        {devices && setDevices && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label>
+                <ListIcon size={16} /> Devices
+              </Label>
+              <div className="flex flex-row gap-2">
+                <ImportDevice
+                  onImport={(importedConfig) => {
+                    if (devices && setDevices) {
+                      // Prevent adding duplicate webhooks
+                      if (
+                        devices.some(
+                          (d) => d.webhook === importedConfig.webhook
+                        )
+                      ) {
+                        return;
+                      }
+                      setDevices([...devices, importedConfig]);
+                    }
+                  }}
+                />
+                <Button
+                  onClick={() =>
+                    setDevices([
+                      ...(devices || []),
+                      {
+                        id: v4(),
+                        name: "",
+                        webhook: "",
+                        location: null,
+                        supportsFrequency: false,
+                      },
+                    ])
+                  }
+                  size="sm"
+                  variant="outline"
+                >
+                  <Plus size={16} />
+                  Add Device
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        {devices &&
+          setDevices &&
+          devices.map((device: Device, index: number) => (
+            <ModifyDevice
+              key={device.id}
+              device={device as Device}
+              setDevice={(newDevice: Device) => {
+                const newDevices = [...devices];
+                newDevices[index] = newDevice;
+                setDevices(newDevices);
+              }}
+              deleteDevice={() => {
+                const newDevices = devices.filter((_, i) => i !== index);
+                setDevices(newDevices);
+              }}
+            />
+          ))}
         <DialogFooter>
           <Button
             size="sm"

@@ -21,7 +21,7 @@ import { Skeleton } from "./ui/skeleton";
 import { ImportExportPanel } from "./import-export";
 import { v4 } from "uuid";
 import Image from "next/image";
-import { DeviceCard, EditNameDialog } from "./device-selector";
+import { DeviceCard, EditUserDialog } from "./device-selector";
 import Link from "next/link";
 import { ZapPanel } from "./zap";
 import { generateUrl } from "@/lib/generate-url";
@@ -61,7 +61,7 @@ function ConnectionCard({
         <div>
           {name}
           {setName && (
-            <EditNameDialog currentName={name} setName={setName}>
+            <EditUserDialog currentName={name} setName={setName}>
               <Button
                 variant="ghost"
                 size="icon"
@@ -70,7 +70,7 @@ function ConnectionCard({
               >
                 <EditIcon size={12} />
               </Button>
-            </EditNameDialog>
+            </EditUserDialog>
           )}
         </div>
 

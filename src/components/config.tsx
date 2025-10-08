@@ -173,7 +173,7 @@ export function UserConfigDialog({
   );
 }
 
-function ImportDevice({ onImport }: { onImport: (config: Device) => void }) {
+export function ImportDevice({ onImport }: { onImport: (config: Device) => void }) {
   const [showInput, setShowInput] = useState(false);
   const [inputValue, setInputValue] = useState("");
 
@@ -245,7 +245,7 @@ function ImportDevice({ onImport }: { onImport: (config: Device) => void }) {
   );
 }
 
-function ModifyDevice({
+export function ModifyDevice({
   device,
   setDevice,
   deleteDevice,
