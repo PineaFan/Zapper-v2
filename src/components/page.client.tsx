@@ -5,45 +5,40 @@ import { UserConfigDialog } from "./config";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import {
   CircleIcon,
-  EditIcon,
   Settings2Icon,
+  Trash2Icon,
   UploadIcon,
   UsersIcon,
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { Config, Device, Shock, User } from "@/lib/types";
+import { Config, Device, Shock } from "@/lib/types";
 import { Button } from "./ui/button";
-import { useLocalStorage } from "react-use";
-import { isEqual } from "lodash";
+import { useDebounce, useLocalStorage } from "react-use";
+import _, { isEqual } from "lodash";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "./ui/skeleton";
 import { ImportExportPanel } from "./import-export";
 import { v4 } from "uuid";
 import Image from "next/image";
-import { DeviceCard, EditUserDialog } from "./device-selector";
+import { DeviceCard } from "./device-selector";
 import Link from "next/link";
 import { ZapPanel } from "./zap";
 import { generateUrl } from "@/lib/generate-url";
+import { ModeToggle } from "./ui/theme-switcher";
 
 function ConnectionCard({
-  status,
-  name,
-  devices,
-  remove,
-  setName,
-  last,
-  noShift,
+  config,
+  setConfig,
+  target,
 }: {
-  status: "connected" | "disconnected";
-  id: string;
-  name: string;
-  devices?: number;
-  remove?: () => void;
-  setName?: (name: string) => void;
-  last?: boolean;
-  noShift?: boolean;
+  config: Config;
+  setConfig: (config: Config) => void;
+  target: string;
 }) {
+  const devices = config.connections[target].devices.length;
+
+  const name = config.connections[target].name || "Unknown User";
   return (
     <>
       <div className="contents group">
@@ -51,30 +46,42 @@ function ConnectionCard({
           <CircleIcon
             fill="currentColor"
             className={cn("inline mr-2", {
-              "text-green-500": status === "connected",
-              "text-red-500": status === "disconnected",
+              "text-green-500": devices,
+              "text-red-500": !devices,
             })}
             size={16}
           />
-          <span className="sr-only">{status}</span>
+          <span className="sr-only">
+            {devices ? "connected" : "disconnected"}
+          </span>
         </div>
         <div>
           {name}
-          {setName && (
-            <EditUserDialog currentName={name} setName={setName}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="ml-2 h-6 w-8 opacity-0 group-hover:opacity-100 transition-all duration-200"
-                aria-label="Edit Name"
-              >
-                <EditIcon size={12} />
-              </Button>
-            </EditUserDialog>
-          )}
+          <UserConfigDialog
+            config={config}
+            setConfig={setConfig}
+            target={target}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-2 h-6 w-8 opacity-0 group-hover:opacity-100 transition-all duration-200"
+              aria-label="Edit User"
+            >
+              <Settings2Icon size={12} />
+            </Button>
+          </UserConfigDialog>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-2 h-6 w-8 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-red-500 hover:bg-red-600 text-white hover:text-white"
+            aria-label="Remove User"
+          >
+            <Trash2Icon size={12} />
+          </Button>
         </div>
 
-        <div />
+        <div className="w-full h-full" />
 
         {devices !== undefined ? (
           <span className="ml-4 text-sm text-muted-foreground">
@@ -83,40 +90,73 @@ function ConnectionCard({
         ) : (
           <div />
         )}
-
-        {!noShift ? (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={remove}
-            className={cn("ml-2", remove === undefined ? "invisible" : "")}
-            aria-label="Remove User"
-          >
-            <XIcon size={16} />
-          </Button>
-        ) : (
-          <div />
-        )}
       </div>
-      {!last && <div className="col-span-full bg-[var(--border)] h-[1px]" />}
+      {Object.values(config.connections)[
+        Object.keys(config.connections).length - 1
+      ].id !== target && (
+        <div className="col-span-full bg-[var(--border)] h-[1px]" />
+      )}
     </>
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const migrateConfig = (oldConfig: any) => {
+  let config = oldConfig;
+  if (oldConfig.version === 1) {
+    const newConfig = {
+      version: 2,
+      id: config.id,
+      connections: {
+        [config.id]: {
+          id: config.id,
+          name: config.name,
+          webhook: config.webhook,
+          devices: config.devices,
+        },
+        ..._.keyBy(config.connections, "id"),
+      },
+    };
+    config = newConfig;
+  }
+  return config as Config;
+};
+
+const defaultUsername = "New User";
+function createDefaultConfig(): Config {
+  const id = v4();
+  return {
+    version: 2,
+    id,
+    connections: {
+      [id]: {
+        id,
+        name: defaultUsername,
+        webhook: "",
+        devices: [],
+      },
+    },
+  };
+}
+
 export function ControlPanel() {
+  const [mounted, setMounted] = useState(false);
   const [configStorage, setConfigStorage] = useLocalStorage<Config>(
     "user-config",
-    {
-      version: 1,
-      id: v4(),
-      name: "New User",
-      webhook: "",
-      devices: [],
-      connections: [],
-    }
+    createDefaultConfig()
   );
-  const [config, setConfig] = useState<Config>(configStorage!);
-  const [mounted, setMounted] = useState(false);
+
+  const [config, setConfig] = useState<Config | null>(null);
+
+  useDebounce(
+    () => {
+      if (!config) return;
+      setConfigStorage(config);
+    },
+    500,
+    [config]
+  );
+
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(
     new Set()
   );
@@ -128,47 +168,56 @@ export function ControlPanel() {
     rampTime: 0,
   });
 
+  // Initialize config once configStorage is loaded
   useEffect(() => {
+    if (!configStorage || config !== null) return;
+
+    const migratedConfig =
+      configStorage.version === 2
+        ? configStorage
+        : migrateConfig(configStorage);
+
+    setConfig(migratedConfig);
+
+    // Persist migration if needed
+    if (migratedConfig.version === 2 && configStorage.version !== 2) {
+      setConfigStorage(migratedConfig);
+    }
+
     setMounted(true);
-  }, []);
+  }, [configStorage, config, setConfigStorage]);
 
+  // Sync config changes to storage
   useEffect(() => {
-    if (isEqual(config, configStorage)) return;
+    if (!mounted || !config || isEqual(config, configStorage)) return;
     setConfigStorage(config);
-  }, [config, setConfigStorage, configStorage]);
+  }, [config, mounted, setConfigStorage, configStorage]);
 
-  if (!mounted) return <Skeleton className="h-screen w-screen" />;
+  if (!mounted || !config) return <Skeleton className="h-screen w-screen" />;
 
   const selectedOthersDevices = Array.from(selectedDevices).filter(
     (id) => !id.startsWith(config.id)
   );
 
+  console.log("config", config);
+
   const generateShockArrayFor = (devices: string[]) => {
     const result: { device: Device; webhook: string }[] = [];
     for (const id of devices) {
-      const arr = id.split("-");
-      const userId = arr.slice(0, 5).join("-");
-      const deviceId = arr.slice(5).join("-");
-      if (userId === config.id) {
-        const device = config.devices.find((d) => d.id === deviceId);
-        if (device) result.push({ device, webhook: config.webhook });
-      } else {
-        const user = config.connections.find((u) => u.id === userId);
-        if (!user) continue;
-        const device = user.devices.find((d) => d.id === deviceId);
-        if (device) result.push({ device, webhook: user.webhook });
+      for (const user of Object.values(config.connections)) {
+        const device = user.devices.find((d) => d.id === id);
+        if (device) {
+          result.push({ device, webhook: user.webhook });
+          break;
+        }
       }
     }
     return result;
   };
 
-  const allDevices = [
-    ...config.devices.map((d) => ({ device: d, webhook: config.webhook })),
-    ...config.connections.flatMap((u) =>
-      u.devices.map((d) => ({ device: d, webhook: u.webhook }))
-    ),
-  ];
-
+  const allDevices = Object.values(config.connections).flatMap((user) =>
+    user.devices.map((device) => ({ device, webhook: user.webhook }))
+  );
   return (
     <div className="h-screen w-full p-4 grid grid-rows-[auto_1fr] grid-cols-1">
       <div className="mx-auto w-full max-w-7xl space-y-4">
@@ -201,31 +250,20 @@ export function ControlPanel() {
                   <Settings2Icon /> Device Settings
                 </Button>
               </UserConfigDialog>
-              {config.devices.length === 0 &&
-                config.connections.length === 0 &&
-                config.name === "New User" && (
+              {config.connections[config.id].devices.length === 0 &&
+                Object.keys(config.connections).length <= 1 &&
+                config.connections[config.id].name === defaultUsername && (
                   <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <span className="h-full w-full rounded-md border-4 border-yellow-500 opacity-10 animate-pulse z-10" />
                   </span>
                 )}
             </div>
-            <ImportExportPanel
-              config={config}
-              addUser={(user: User) => {
-                setConfig({
-                  ...config,
-                  connections: [
-                    ...config.connections.filter((c) => c.id !== user.id),
-                    user,
-                  ],
-                });
-              }}
-              setConfig={setConfig}
-            >
+            <ImportExportPanel config={config} setConfig={setConfig}>
               <Button variant="outline">
                 <UploadIcon /> Import / Export
               </Button>
             </ImportExportPanel>
+            <ModeToggle />
           </div>
         </header>
 
@@ -239,41 +277,12 @@ export function ControlPanel() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-1 grid-cols-[min-content_max-content_1fr_max-content_min-content] items-center">
-                <ConnectionCard
-                  status={config.devices.length ? "connected" : "disconnected"}
-                  name={config.name || "You"}
-                  devices={config.devices.length}
-                  id={config.id}
-                  setName={(name) => setConfig({ ...config, name })}
-                  last={config.connections.length === 0}
-                  noShift={config.connections.length === 0}
-                />
-                {config.connections.map((connection, i) => (
+                {Object.values(config.connections).map((connection) => (
                   <ConnectionCard
                     key={connection.id}
-                    status={
-                      connection.devices.length ? "connected" : "disconnected"
-                    }
-                    name={connection.name || "Unknown User"}
-                    id={connection.id}
-                    setName={(name) => {
-                      setConfig({
-                        ...config,
-                        connections: config.connections.map((c) =>
-                          c.id === connection.id ? { ...c, name } : c
-                        ),
-                      });
-                    }}
-                    devices={connection.devices.length}
-                    remove={() => {
-                      setConfig({
-                        ...config,
-                        connections: config.connections.filter(
-                          (c) => c.id !== connection.id
-                        ),
-                      });
-                    }}
-                    last={i === config.connections.length - 1}
+                    config={config}
+                    setConfig={setConfig}
+                    target={connection.id}
                   />
                 ))}
               </CardContent>
@@ -282,7 +291,6 @@ export function ControlPanel() {
               config={config}
               selectedDevices={selectedDevices}
               setSelectedDevices={(d) => setSelectedDevices(d)}
-              setConfig={setConfig}
             />
           </div>
           <div className="flex flex-col gap-4">

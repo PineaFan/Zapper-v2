@@ -39,10 +39,7 @@ export type User = z.infer<typeof UserSchema>;
 export const ConfigSchema = z.object({
     version: z.number().min(1),
     id: z.uuid(),
-    name: z.string(),
-    webhook: z.string(),
-    devices: z.array(DeviceSchema),
-    connections: z.array(UserSchema),
+    connections: z.record(z.string(), UserSchema),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -56,3 +53,8 @@ export const ShockSchema = z.object({
 });
 
 export type Shock = z.infer<typeof ShockSchema>;
+
+export type DispatchShock = {
+    devices: Device[];
+    webhook: string;
+}

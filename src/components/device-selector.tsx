@@ -1,6 +1,6 @@
 "use client";
 
-import type { Config, Device, User } from "@/lib/types";
+import type { Config, User } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import {
   Table2Icon,
@@ -8,32 +8,16 @@ import {
   WavesIcon,
   ZapOffIcon,
   CircleSlashIcon,
-  EditIcon,
-  SaveIcon,
   ListIndentIncreaseIcon,
   ListXIcon,
-  Plus,
-  ListIcon,
 } from "lucide-react";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Switch } from "./ui/switch";
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "./ui/dialog";
-import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { ChangeIcon } from "./change-icon";
-import { ImportDevice, ModifyDevice } from "./config";
-import { v4 } from "uuid";
 
 const icons = {
   enabled: {
@@ -50,12 +34,10 @@ export function DeviceCard({
   config,
   selectedDevices,
   setSelectedDevices,
-  setConfig,
 }: {
   config: Config;
   selectedDevices: Set<string>;
   setSelectedDevices: (devices: Set<string>) => void;
-  setConfig: (config: Config) => void;
 }) {
   // Used to indicate the default state of the device, without any overrides
   const [toggleStates, setToggleStates] = useState<Record<string, boolean>>({});
@@ -63,18 +45,7 @@ export function DeviceCard({
   const [isolateChannel, setIsolatedChannel] = useState<string | null>(null);
   const [isolatedUser, setIsolatedUser] = useState<string | null>(null);
 
-  const users = (
-    config
-      ? [
-          {
-            id: config.id,
-            name: config.name,
-            devices: config.devices || [],
-          } as User,
-          ...(config.connections || []),
-        ]
-      : []
-  ).filter((u) => u.devices.length > 0);
+  const users = Object.values(config.connections);
 
   const toggleUser = (userId: string) => {
     const newDisabledUsers = new Set(disabledUsers);
@@ -91,8 +62,7 @@ export function DeviceCard({
       users
         .find((u) => u.id === userId)
         ?.devices.forEach((device) => {
-          const deviceKey = `${userId}-${device.id}`;
-          newSelectedDevices.delete(deviceKey);
+          newSelectedDevices.delete(device.id);
         });
       setSelectedDevices(newSelectedDevices);
     } else {
@@ -101,7 +71,7 @@ export function DeviceCard({
       users
         .find((u) => u.id === userId)
         ?.devices.forEach((device) => {
-          const deviceKey = `${userId}-${device.id}`;
+          const deviceKey = device.id
           if (deviceKey in toggleStates) {
             if (toggleStates[deviceKey]) {
               newSelectedDevices.add(deviceKey);
@@ -134,7 +104,7 @@ export function DeviceCard({
 
   const getEnabledDeviceCount = (user: User) => {
     return user.devices.filter((device) =>
-      selectedDevices.has(`${user.id}-${device.id}`)
+      selectedDevices.has(device.id)
     ).length;
   };
 
@@ -223,9 +193,8 @@ export function DeviceCard({
                       users.forEach((u) => {
                         if (!disabledUsers.has(u.id)) {
                           u.devices.forEach((d) => {
-                            const key = `${u.id}-${d.id}`;
-                            if (toggleStates[key]) {
-                              restoredDevices.add(key);
+                            if (toggleStates[d.id]) {
+                              restoredDevices.add(d.id);
                             }
                           });
                         }
@@ -236,9 +205,8 @@ export function DeviceCard({
                       setIsolatedUser(user.id);
                       const maskedDevices = new Set<string>();
                       user.devices.forEach((d) => {
-                        const key = `${user.id}-${d.id}`;
-                        if (toggleStates[key]) {
-                          maskedDevices.add(key);
+                        if (toggleStates[d.id]) {
+                          maskedDevices.add(d.id);
                         }
                       });
                       setSelectedDevices(maskedDevices);
@@ -260,43 +228,6 @@ export function DeviceCard({
                     )}
                   </ChangeIcon>
                 </Button>
-                <EditUserDialog
-                  currentName={user.name}
-                  setName={(name) => {
-                    if (user.id === config.id) {
-                      setConfig({ ...config, name });
-                    } else {
-                      setConfig({
-                        ...config,
-                        connections: config.connections.map((c) =>
-                          c.id === user.id ? { ...c, name } : c
-                        ),
-                      });
-                    }
-                  }}
-                  devices={user.devices}
-                  setDevices={(devices) => {
-                    if (user.id === config.id) {
-                      setConfig({ ...config, devices });
-                    } else {
-                      setConfig({
-                        ...config,
-                        connections: config.connections.map((c) =>
-                          c.id === user.id ? { ...c, devices } : c
-                        ),
-                      });
-                    }
-                  }}
-                >
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-8 opacity-0 group-hover:opacity-100 transition-all duration-200"
-                    aria-label="Edit Name"
-                  >
-                    <EditIcon size={12} />
-                  </Button>
-                </EditUserDialog>
                 <div className="flex-1" />
                 <Badge variant="outline" className="text-xs">
                   {getEnabledDeviceCount(user)} / {user.devices.length} enabled
@@ -306,17 +237,16 @@ export function DeviceCard({
               <div className="w-full pl-4">
                 <div className="grid gap-x-2 w-full items-center auto-rows-fr grid-cols-[min-content_min-content_minmax(min-content,_max-content)_1fr_minmax(min-content,_max-content)]">
                   {user.devices.map((device) => {
-                    const deviceKey = `${user.id}-${device.id}`;
-                    const isSelected = toggleStates[deviceKey];
+                    const isSelected = toggleStates[device.id];
                     const isEffectivelyEnabled = isDeviceEffectivelyEnabled(
-                      deviceKey,
+                      device.id,
                       user.id
                     );
 
                     return (
                       <div key={device.id} className="contents">
                         <Switch
-                          id={deviceKey}
+                          id={device.id}
                           className="cursor-pointer"
                           checked={isSelected || isolateChannel === device.id}
                           disabled={
@@ -330,10 +260,10 @@ export function DeviceCard({
                           onCheckedChange={() => {
                             if (isolateChannel === device.id) {
                               setIsolatedChannel(null);
-                              if (isSelected) toggleDevice(deviceKey);
+                              if (isSelected) toggleDevice(device.id);
                               return;
                             }
-                            toggleDevice(deviceKey);
+                            toggleDevice(device.id);
                           }}
                         />
                         <Button
@@ -351,9 +281,8 @@ export function DeviceCard({
                               users.forEach((u) => {
                                 if (!disabledUsers.has(u.id)) {
                                   u.devices.forEach((d) => {
-                                    const key = `${u.id}-${d.id}`;
-                                    if (toggleStates[key]) {
-                                      restoredDevices.add(key);
+                                    if (toggleStates[d.id]) {
+                                      restoredDevices.add(d.id);
                                     }
                                   });
                                 }
@@ -376,7 +305,7 @@ export function DeviceCard({
                           </ChangeIcon>
                         </Button>
                         <Label
-                          htmlFor={deviceKey}
+                          htmlFor={device.id}
                           className="cursor-pointer text-sm duration-200 min-w-max text-pretty"
                           style={{ minWidth: 0 }}
                         >
@@ -443,125 +372,5 @@ export function DeviceCard({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-type EditUserDialogProps = {
-  setName: (name: string) => void;
-  currentName: string;
-  children: React.ReactNode;
-} & (
-  | { setDevices: (devices: Device[]) => void; devices: Device[] }
-  | { setDevices?: undefined; devices?: undefined }
-);
-
-export function EditUserDialog({
-  setName,
-  currentName,
-  children,
-  setDevices,
-  devices,
-}: EditUserDialogProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [nameInput, setNameInput] = useState(currentName);
-
-  // Ensure both devices and setDevices are either present or absent
-  if ((devices && !setDevices) || (!devices && setDevices)) {
-    throw new Error(
-      "EditUserDialog: devices and setDevices must both be provided or both be omitted."
-    );
-  }
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit User</DialogTitle>
-          <DialogDescription>Edit users name and devices.</DialogDescription>
-        </DialogHeader>
-        <Input
-          value={nameInput}
-          onChange={(e) => setNameInput(e.target.value)}
-        />
-        {devices && setDevices && (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <Label>
-                <ListIcon size={16} /> Devices
-              </Label>
-              <div className="flex flex-row gap-2">
-                <ImportDevice
-                  onImport={(importedConfig) => {
-                    if (devices && setDevices) {
-                      // Prevent adding duplicate webhooks
-                      if (
-                        devices.some(
-                          (d) => d.webhook === importedConfig.webhook
-                        )
-                      ) {
-                        return;
-                      }
-                      setDevices([...devices, importedConfig]);
-                    }
-                  }}
-                />
-                <Button
-                  onClick={() =>
-                    setDevices([
-                      ...(devices || []),
-                      {
-                        id: v4(),
-                        name: "",
-                        webhook: "",
-                        location: null,
-                        supportsFrequency: false,
-                      },
-                    ])
-                  }
-                  size="sm"
-                  variant="outline"
-                >
-                  <Plus size={16} />
-                  Add Device
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-        {devices &&
-          setDevices &&
-          devices.map((device: Device, index: number) => (
-            <ModifyDevice
-              key={device.id}
-              device={device as Device}
-              setDevice={(newDevice: Device) => {
-                const newDevices = [...devices];
-                newDevices[index] = newDevice;
-                setDevices(newDevices);
-              }}
-              deleteDevice={() => {
-                const newDevices = devices.filter((_, i) => i !== index);
-                setDevices(newDevices);
-              }}
-            />
-          ))}
-        <DialogFooter>
-          <Button
-            size="sm"
-            disabled={
-              nameInput.trim().length === 0 || nameInput === currentName
-            }
-            onClick={() => {
-              setName(nameInput);
-              setIsOpen(false);
-            }}
-          >
-            <SaveIcon />
-            Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
