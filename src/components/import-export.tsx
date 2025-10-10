@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  Config,
-  ConfigSchema,
-  DeviceSchema,
-  UserSchema,
-} from "@/lib/types";
+import { Config, ConfigSchema, DeviceSchema, UserSchema } from "@/lib/types";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +22,7 @@ import {
   SquareEqual,
   XIcon,
 } from "lucide-react";
-import { Ref, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShowWhileActive } from "./show-while-active";
 import { Switch } from "./ui/switch";
 import { v4 } from "uuid";
@@ -163,7 +158,7 @@ export function ImportExportPanel({
 
   const deviceRef = useRef<HTMLInputElement>(null);
   const fullRef = useRef<HTMLInputElement>(null);
-  const toggleRef = useRef<HTMLInputElement>(null);
+  const [toggled, setToggled] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -313,14 +308,12 @@ export function ImportExportPanel({
               />
               <Button
                 disabled={
-                  (importResult?.type === "full" &&
-                    !toggleRef.current?.checked) ||
-                  !importData
+                  (importResult?.type === "full" && !toggled) || !importData
                 }
                 size="sm"
                 onClick={() => {
                   if (!importResult) return;
-                  if (importResult.type === "full" && !toggleRef.current?.checked) {
+                  if (importResult.type === "full" && !toggled) {
                     return;
                   }
                   setConfig(importResult.config);
@@ -328,7 +321,7 @@ export function ImportExportPanel({
                   setTimeout(() => setImported(null), 5000);
                   setImportData("");
                   setImportResult(null);
-                  if (toggleRef.current) toggleRef.current.checked = false;
+                  if (toggled) setToggled(false);
                 }}
                 variant={
                   importResult?.type === "full" ? "destructive" : "default"
@@ -370,7 +363,8 @@ export function ImportExportPanel({
               <div className="flex items-center mt-1">
                 <Switch
                   id="confirm"
-                  ref={toggleRef as Ref<HTMLButtonElement>}
+                  checked={toggled}
+                  onCheckedChange={setToggled}
                 />
                 <Label
                   htmlFor="confirm"
