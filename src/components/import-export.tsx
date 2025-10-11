@@ -1,6 +1,6 @@
 "use client";
 
-import { Config, User } from "@/lib/types";
+import { Config, ConfigSchema, DeviceSchema, UserSchema } from "@/lib/types";
 import {
   Dialog,
   DialogContent,
@@ -19,66 +19,175 @@ import {
   ClipboardXIcon,
   Link2Icon,
   RefreshCcwDotIcon,
+  SquareEqual,
+  XIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShowWhileActive } from "./show-while-active";
 import { Switch } from "./ui/switch";
+import { v4 } from "uuid";
+import _ from "lodash";
+import { ChangeIcon } from "./change-icon";
+import { cn } from "@/lib/utils";
+import { AnimatePresence, motion } from "framer-motion";
+
+type SupportedDevices = Array<"device" | "connection" | "full">;
+function handleImport(
+  data: string,
+  supportedDevices: SupportedDevices,
+  config: Config,
+  target?: string
+): {
+  config: Config;
+  modified: boolean | null;
+  status: string;
+  type?: SupportedDevices[number];
+} {
+  let json;
+  try {
+    const decodedJson = Buffer.from(data, "base64").toString("utf-8");
+    json = JSON.parse(decodedJson);
+  } catch (TypeError) {
+    console.error("Failed to decode import data:", TypeError);
+    return { config, modified: false, status: "Failed to decode" };
+  }
+  const clonedConfig = _.cloneDeep(config);
+  const withID = { ...json, id: json.id ?? v4() };
+
+  const type = (() => {
+    console.log("Attempting to detect import type...", withID);
+    try {
+      if (DeviceSchema.safeParse(withID).success) return "device";
+      // It could also be a device[]
+      if (
+        Array.isArray(json) &&
+        json.every((d) => DeviceSchema.safeParse(d).success)
+      )
+        return "device";
+      if (UserSchema.safeParse(withID).success) return "connection";
+      if (ConfigSchema.safeParse(json).success) return "full";
+    } catch {
+      return null;
+    }
+    return null;
+  })();
+
+  if (!type || !supportedDevices.includes(type))
+    return { config, modified: false, status: "Unsupported device type" };
+
+  let statusText = "";
+
+  if (type === "device") {
+    const asArray = Array.isArray(json) ? json : [withID];
+
+    statusText =
+      (clonedConfig.connections[clonedConfig.id].devices.length
+        ? `Updating ${asArray.length} device `
+        : "Importing new device") + (Array.isArray(json) ? "s" : "");
+
+    asArray.forEach((device) => {
+      // Find the user and device with the matching webhook
+      const userWithDevice = Object.values(clonedConfig.connections).find((u) =>
+        u.devices.some(
+          (d) => d.webhook === device.webhook || d.id === device.id
+        )
+      );
+
+      if (userWithDevice) {
+        // Update the device's name/location in place
+        userWithDevice.devices = userWithDevice.devices.map((d) =>
+          d.webhook === device.webhook || d.id === device.id
+            ? {
+                ...d,
+                name: device.name ?? d.name,
+                location: device.location ?? d.location,
+              }
+            : d
+        );
+        clonedConfig.connections[userWithDevice.id] = userWithDevice;
+      } else {
+        // Add the device to the current user's devices
+        clonedConfig.connections[target || clonedConfig.id].devices.push(
+          DeviceSchema.parse(device)
+        );
+      }
+    });
+  } else if (type === "connection") {
+    const parsedUser = UserSchema.parse(withID);
+    // Just set the key
+    statusText = clonedConfig.connections[parsedUser.id]
+      ? `Replacing existing devices for ${parsedUser.name}`
+      : `Importing devices for new user ${parsedUser.name}`;
+    clonedConfig.connections[parsedUser.id] = {
+      ...parsedUser,
+      devices: parsedUser.devices || [],
+    };
+  } else if (type === "full") {
+    const parsedConfig = ConfigSchema.parse(json);
+    statusText = "Overwriting entire configuration";
+    return { config: parsedConfig, modified: true, status: statusText, type };
+  }
+
+  return {
+    config: clonedConfig,
+    modified: _.isEqual(clonedConfig, config) ? null : true,
+    status: statusText || "Imported successfully",
+    type,
+  };
+}
 
 export function ImportExportPanel({
   config,
-  addUser,
   setConfig,
   children,
 }: {
   config: Config;
-  addUser: (user: User) => void;
   setConfig: (config: Config) => void;
   children: React.ReactNode;
 }) {
-  const encoded = Buffer.from(
-    JSON.stringify({
-      id: config.id,
-      name: config.name,
-      webhook: config.webhook,
-      devices: config.devices,
-    }),
-  ).toString("base64");
-  const fullEncoded = Buffer.from(JSON.stringify(config)).toString("base64");
   const [copied, setCopied] = useState<{
     button: "devices" | "all" | "import";
     status: "copied" | "failed";
   } | null>(null);
   const [importData, setImportData] = useState<string>("");
-  const [imported, setImported] = useState<boolean | null | "full">(null);
-  const [confirmed, setConfirmed] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [imported, setImported] = useState<null | boolean>(null);
 
-  const isImportValid = (() => {
-    try {
-      const decoded = Buffer.from(importData, "base64").toString("utf-8");
-      const parsed = JSON.parse(decoded);
-      if (typeof parsed === "object" && parsed.version) {
-        return "full";
-      }
-      console.log(parsed);
-      const isValid =
-        typeof parsed === "object" &&
-        parsed !== null &&
-        "id" in parsed &&
-        "name" in parsed &&
-        "webhook" in parsed &&
-        "devices" in parsed &&
-        Array.isArray(parsed.devices);
-      if (parsed.id === config.id) return false;
-      const isDuplicate = config.connections.some((u) => u.id === parsed.id);
-      if (isDuplicate) return isValid ? null : false;
-      return isValid;
-    } catch {
-      return false;
-    }
-  })();
+  const [deviceEncoded, setDeviceEncoded] = useState("");
+  const [fullEncoded, setFullEncoded] = useState("");
+
+  const deviceRef = useRef<HTMLInputElement>(null);
+  const fullRef = useRef<HTMLInputElement>(null);
+  const [toggled, setToggled] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const ownDevices = config.connections[config.id]?.devices || [];
+    const deviceData = JSON.stringify(ownDevices);
+    const fullData = JSON.stringify(config);
+    setDeviceEncoded(Buffer.from(deviceData, "utf-8").toString("base64"));
+    setFullEncoded(Buffer.from(fullData, "utf-8").toString("base64"));
+  }, [open, setDeviceEncoded, setFullEncoded, config]);
+
+  const [importResult, setImportResult] = useState<ReturnType<
+    typeof handleImport
+  > | null>(null);
+
+  const onValueChange = useCallback(() => {
+    if (!importData) return;
+    console.log("Recalculating");
+    const result = handleImport(
+      importData,
+      ["device", "connection", "full"],
+      config
+    );
+    setImportResult(result);
+  }, [config, importData]);
+
+  useEffect(onValueChange, [importData, onValueChange]);
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -93,10 +202,12 @@ export function ImportExportPanel({
             <div className="w-full flex flex-row gap-2 items-center mt-1">
               <Input
                 id="share"
+                ref={deviceRef}
                 className="my-1"
                 placeholder="No data provided"
-                value={encoded}
+                value={deviceEncoded}
                 readOnly
+                onClick={() => deviceRef.current?.select()}
               />
               <Button
                 variant={
@@ -108,7 +219,7 @@ export function ImportExportPanel({
                 }
                 onClick={() => {
                   try {
-                    navigator.clipboard.writeText(encoded);
+                    navigator.clipboard.writeText(deviceEncoded);
                     setCopied({ button: "devices", status: "copied" });
                   } catch {
                     setCopied({ button: "devices", status: "failed" });
@@ -131,10 +242,12 @@ export function ImportExportPanel({
             <div className="w-full flex flex-row gap-2 items-center mt-1">
               <Input
                 id="share"
+                ref={fullRef}
                 className="my-1"
                 placeholder="No data provided"
                 value={fullEncoded}
                 readOnly
+                onClick={() => fullRef.current?.select()}
               />
               <Button
                 variant={
@@ -195,83 +308,63 @@ export function ImportExportPanel({
               />
               <Button
                 disabled={
-                  (!isImportValid && isImportValid !== null) ||
-                  (isImportValid === "full" && !confirmed)
+                  (importResult?.type === "full" && !toggled) || !importData
                 }
+                size="sm"
                 onClick={() => {
-                  if (!isImportValid && isImportValid !== null) return;
-                  if (isImportValid === "full") {
-                    setConfig(
-                      JSON.parse(
-                        Buffer.from(importData, "base64").toString("utf-8"),
-                      ),
-                    );
-                    setImported("full");
-                    setImported(true);
-                    setTimeout(() => setImported(null), 5000);
-                    setConfirmed(false);
-                    setImportData("");
+                  if (!importResult) return;
+                  if (importResult.type === "full" && !toggled) {
                     return;
                   }
-                  const decoded = Buffer.from(importData, "base64").toString(
-                    "utf-8",
-                  );
-                  const parsed = JSON.parse(decoded);
-                  addUser(parsed);
-                  setImportData("");
+                  setConfig(importResult.config);
                   setImported(true);
-                  setTimeout(() => setImported(null), 3000);
+                  setTimeout(() => setImported(null), 5000);
+                  setImportData("");
+                  setImportResult(null);
+                  if (toggled) setToggled(false);
                 }}
-                variant={isImportValid === "full" ? "destructive" : "default"}
+                variant={
+                  importResult?.type === "full" ? "destructive" : "default"
+                }
               >
                 {imported ? (
                   <CheckIcon />
-                ) : isImportValid === null || isImportValid === "full" ? (
+                ) : importResult?.modified === null ||
+                  importResult?.type === "full" ? (
                   <RefreshCcwDotIcon />
                 ) : (
                   <Link2Icon />
                 )}
                 {imported
                   ? "Imported"
-                  : isImportValid === null || isImportValid === "full"
-                    ? "Overwrite"
-                    : "Import"}
+                  : importResult?.modified === null ||
+                    importResult?.type === "full"
+                  ? "Overwrite"
+                  : "Import"}
               </Button>
             </div>
-            <ShowWhileActive isActive={isImportValid === null}>
-              <div className="text-xs text-yellow-600 mt-1">
-                This person already has devices added. Importing will overwrite
-                their current ones.
-              </div>
-            </ShowWhileActive>
-            <ShowWhileActive
-              isActive={
-                isImportValid === false &&
-                importData.length > 0 &&
-                importData !== encoded
-              }
-            >
-              <div className="text-xs text-red-600 mt-1">
-                Invalid import data.
-              </div>
-            </ShowWhileActive>
-            <ShowWhileActive isActive={importData === encoded}>
-              <div className="text-xs text-yellow-600 mt-1 text-pretty">
-                You may not use your own data, but this will work when shared
-                with someone else.
-              </div>
-            </ShowWhileActive>
-            <ShowWhileActive isActive={isImportValid === true}>
-              <div className="text-xs text-green-600 mt-1">
-                Data is ready to import!
-              </div>
-            </ShowWhileActive>
-            <ShowWhileActive isActive={isImportValid === "full"}>
+            <AnimatePresence>
+              {importData && importResult && importResult.type !== "full" && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                  animate={{ opacity: 1, height: "auto", marginTop: 4 }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  key={importResult.status}
+                  className={cn(
+                    "text-xs",
+                    importResult.modified === false ? "text-red-500" : ""
+                  )}
+                >
+                  {importResult.status}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <ShowWhileActive isActive={importResult?.type === "full"}>
               <div className="flex items-center mt-1">
                 <Switch
                   id="confirm"
-                  checked={confirmed}
-                  onCheckedChange={setConfirmed}
+                  checked={toggled}
+                  onCheckedChange={setToggled}
                 />
                 <Label
                   htmlFor="confirm"
@@ -287,5 +380,64 @@ export function ImportExportPanel({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function ImportDeviceButton({
+  target,
+  config,
+  setConfig,
+}: {
+  target: string;
+  config: Config;
+  setConfig: (newConfig: Config) => void;
+}) {
+  const [showInput, setShowInput] = useState(false);
+  const [status, setStatus] = useState<undefined | null | boolean>(undefined);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const onImport = async () => {
+    let text;
+    try {
+      text = inputRef.current?.value || (await navigator.clipboard.readText());
+    } catch {
+      setShowInput(true);
+      setTimeout(() => inputRef.current?.focus(), 0);
+      return;
+    }
+    const newConfig = handleImport(text, ["device"], config, target);
+    setConfig(newConfig.config);
+    setStatus(newConfig.modified);
+    if (inputRef.current) inputRef.current.value = "";
+    setTimeout(() => setStatus(undefined), 2000);
+  };
+
+  return (
+    <>
+      {showInput && (
+        <Input ref={inputRef} placeholder="Paste here" className="ml-2" />
+      )}
+      <Button
+        variant={
+          status === true
+            ? "success"
+            : status === false
+            ? "destructive"
+            : "default"
+        }
+        size="sm"
+        onClick={onImport}
+      >
+        <ChangeIcon changeKey={`${status}`} withScale>
+          {(() => {
+            if (status === undefined) return <ClipboardPasteIcon size={16} />;
+            if (status === null) return <SquareEqual size={16} />;
+            if (status === true) return <CheckIcon size={16} />;
+            return <XIcon size={16} />;
+          })()}
+        </ChangeIcon>
+        {showInput ? "" : "Import"}
+      </Button>
+    </>
   );
 }

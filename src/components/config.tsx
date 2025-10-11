@@ -1,7 +1,7 @@
 "use client";
 
 import { Config, Device } from "@/lib/types";
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,6 @@ import { Label } from "./ui/label";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import {
-  ClipboardPasteIcon,
   ExternalLinkIcon,
   ListIcon,
   Plus,
@@ -28,18 +27,56 @@ import Link from "next/link";
 import { Switch } from "./ui/switch";
 import { motion } from "framer-motion";
 import { v4 } from "uuid";
+import { useDebounce } from "react-use";
+import { isEqual } from "lodash";
+import { ImportDeviceButton } from "./import-export";
 
 export function UserConfigDialog({
   config,
   setConfig,
+  target,
   children,
 }: {
   config: Config;
   setConfig: (config: Config) => void;
+  target?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [activeElement, setActiveElement] = useState<string | null>(null);
+  // Local state to allow for debouncing
+  const [componentConfig, setComponentConfig] = useState(config);
+
+  // Sync local state if the parent's prop changes
+  useEffect(() => {
+    setComponentConfig(config);
+  }, [config]);
+
+  useDebounce(
+    () => {
+      // Only call the parent's setConfig if there's a difference
+      if (!isEqual(config, componentConfig)) {
+        setConfig(componentConfig);
+      }
+    },
+    500,
+    [componentConfig]
+  );
+
+  const userInfo = componentConfig.connections[target || componentConfig.id];
+  if (!userInfo) return null;
+  const isOwn = userInfo.id === componentConfig.id;
+
+  const modifyUserConfig = (newInfo: typeof userInfo) => {
+    const newConfig = {
+      ...componentConfig,
+      connections: {
+        ...componentConfig.connections,
+        [target || componentConfig.id]: newInfo,
+      },
+    };
+    setComponentConfig(newConfig);
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -48,13 +85,13 @@ export function UserConfigDialog({
         <DialogHeader>
           <DialogTitle>Device Settings</DialogTitle>
           <DialogDescription>
-            Configure your own E-stim devices.
+            Configure {isOwn ? "your" : `${userInfo.name}'s`} info and devices.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
             <Label htmlFor="name">
-              <UserIcon size={16} /> Your Name
+              <UserIcon size={16} /> Name
             </Label>
             <Input
               id="name"
@@ -62,12 +99,16 @@ export function UserConfigDialog({
               onBlur={() => setActiveElement(null)}
               className="my-1"
               placeholder="Johnathan Doe"
-              value={config.name}
-              onChange={(e) => setConfig({ ...config, name: e.target.value })}
+              value={userInfo.name}
+              onChange={(e) =>
+                modifyUserConfig({ ...userInfo, name: e.target.value })
+              }
             />
             <ShowWhileActive isActive={activeElement === "name"}>
               <p className="text-sm text-muted-foreground">
-                Your display name, shown to other users.
+                {isOwn
+                  ? "Your display name, shown to other users."
+                  : "Name of the user in your device list."}
               </p>
             </ShowWhileActive>
           </div>
@@ -81,9 +122,9 @@ export function UserConfigDialog({
               onBlur={() => setActiveElement(null)}
               className="my-1"
               placeholder="abc123xyz"
-              value={config.webhook}
+              value={userInfo.webhook}
               onChange={(e) =>
-                setConfig({ ...config, webhook: e.target.value })
+                modifyUserConfig({ ...userInfo, webhook: e.target.value })
               }
             />
             <ShowWhileActive isActive={activeElement === "webhook"}>
@@ -106,26 +147,17 @@ export function UserConfigDialog({
                 <ListIcon size={16} /> Devices
               </Label>
               <div className="flex flex-row gap-2">
-                <ImportDevice
-                  onImport={(importedConfig) => {
-                    // ID is generated, so will never match. The webhook shouldn't change though.
-                    setConfig({
-                      ...config,
-                      devices: [
-                        ...config.devices.filter(
-                          (d) => d.webhook !== importedConfig.webhook
-                        ),
-                        importedConfig,
-                      ],
-                    });
-                  }}
+                <ImportDeviceButton
+                  target={target || componentConfig.id}
+                  config={componentConfig}
+                  setConfig={setComponentConfig}
                 />
                 <Button
                   onClick={() =>
-                    setConfig({
-                      ...config,
+                    modifyUserConfig({
+                      ...userInfo,
                       devices: [
-                        ...config.devices,
+                        ...userInfo.devices,
                         {
                           id: v4(),
                           name: "",
@@ -144,20 +176,20 @@ export function UserConfigDialog({
                 </Button>
               </div>
             </div>
-            {config.devices.map((device, index) => (
+            {userInfo.devices.map((device, index) => (
               <ModifyDevice
                 key={device.id}
                 device={device}
                 setDevice={(newDevice) => {
-                  const newDevices = [...config.devices];
+                  const newDevices = [...userInfo.devices];
                   newDevices[index] = newDevice;
-                  setConfig({ ...config, devices: newDevices });
+                  modifyUserConfig({ ...userInfo, devices: newDevices });
                 }}
                 deleteDevice={() => {
-                  const newDevices = config.devices.filter(
+                  const newDevices = userInfo.devices.filter(
                     (_, i) => i !== index
                   );
-                  setConfig({ ...config, devices: newDevices });
+                  modifyUserConfig({ ...userInfo, devices: newDevices });
                 }}
               />
             ))}
@@ -173,79 +205,7 @@ export function UserConfigDialog({
   );
 }
 
-function ImportDevice({ onImport }: { onImport: (config: Device) => void }) {
-  const [showInput, setShowInput] = useState(false);
-  const [inputValue, setInputValue] = useState("");
-
-  const handleDecode = (text: string) => {
-    try {
-      // Base64 decode the text
-      const decoded = atob(text);
-      const importedConfig = JSON.parse(decoded) as Omit<Device, "id">;
-      console.log({
-        id: v4(),
-        ...importedConfig,
-      });
-      onImport({
-        id: v4(),
-        ...importedConfig,
-      });
-    } catch (error) {
-      console.log(
-        `Failed to import configuration. (${(error as Error).message})`
-      );
-    }
-  };
-
-  const handleClipboardPaste = async () => {
-    try {
-      // Read the clipboard
-      const text = await navigator.clipboard.readText();
-      handleDecode(text);
-    } catch (error) {
-      console.log(`Clipboard access failed. (${(error as Error).message})`);
-      setShowInput(true);
-    }
-  };
-
-  const handleInputSubmit = () => {
-    if (inputValue.trim()) {
-      handleDecode(inputValue);
-      setInputValue("");
-      setShowInput(false);
-    }
-  };
-
-  if (showInput) {
-    return (
-      <div className="flex gap-2 items-center">
-        <Input
-          placeholder="Paste code..."
-          autoFocus
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              handleInputSubmit();
-            }
-          }}
-          className="w-32"
-        />
-        <Button variant="default" size="sm" onClick={handleInputSubmit}>
-          <SaveIcon size={16} />
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <Button variant="default" size="sm" onClick={handleClipboardPaste}>
-      <ClipboardPasteIcon size={16} /> Import
-    </Button>
-  );
-}
-
-function ModifyDevice({
+export function ModifyDevice({
   device,
   setDevice,
   deleteDevice,
