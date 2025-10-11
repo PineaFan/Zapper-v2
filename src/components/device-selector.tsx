@@ -71,7 +71,7 @@ export function DeviceCard({
       users
         .find((u) => u.id === userId)
         ?.devices.forEach((device) => {
-          const deviceKey = device.id
+          const deviceKey = device.id;
           if (deviceKey in toggleStates) {
             if (toggleStates[deviceKey]) {
               newSelectedDevices.add(deviceKey);
@@ -103,9 +103,8 @@ export function DeviceCard({
   };
 
   const getEnabledDeviceCount = (user: User) => {
-    return user.devices.filter((device) =>
-      selectedDevices.has(device.id)
-    ).length;
+    return user.devices.filter((device) => selectedDevices.has(device.id))
+      .length;
   };
 
   const isDeviceEffectivelyEnabled = (deviceKey: string, userId: string) => {
@@ -177,7 +176,7 @@ export function DeviceCard({
                 />
                 <Label
                   htmlFor={`user-${user.id}`}
-                  className="font-semibold text-base cursor-pointer"
+                  className="font-semibold text-base cursor-pointer overflow-hidden text-ellipsis w-full inline-block"
                 >
                   {user.name}
                 </Label>
@@ -228,13 +227,12 @@ export function DeviceCard({
                     )}
                   </ChangeIcon>
                 </Button>
-                <div className="flex-1" />
                 <Badge variant="outline" className="text-xs">
                   {getEnabledDeviceCount(user)} / {user.devices.length} enabled
                 </Badge>
               </div>
 
-              <div className="w-full pl-4">
+              <div className="w-full">
                 <div className="grid gap-x-2 w-full items-center auto-rows-fr grid-cols-[min-content_min-content_minmax(min-content,_max-content)_1fr_minmax(min-content,_max-content)]">
                   {user.devices.map((device) => {
                     const isSelected = toggleStates[device.id];

@@ -56,8 +56,10 @@ function ConnectionCard({
             {devices ? "connected" : "disconnected"}
           </span>
         </div>
-        <div>
+        <div className="overflow-hidden text-ellipsis line-clamp-1 inline-block">
           {name}
+        </div>
+        <div className="flex items-center">
           <UserConfigDialog
             config={config}
             setConfig={setConfig}
@@ -228,9 +230,14 @@ export function ControlPanel() {
 
   if (!mounted || !config) return <Skeleton className="h-screen w-screen" />;
 
-  const selectedOthersDevices = Array.from(selectedDevices).filter(
-    (id) => !id.startsWith(config.id)
-  );
+  const selectedOthersDevices = Array.from(selectedDevices).filter((id) => {
+    for (const user of Object.values(config.connections)) {
+      if (user.devices.find((d) => d.id === id) && user.id !== config.id) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   const generateShockArrayFor = (devices: string[]) => {
     const result: { device: Device; webhook: string }[] = [];
@@ -307,7 +314,7 @@ export function ControlPanel() {
                   Connected Users
                 </CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-1 grid-cols-[min-content_max-content_1fr_max-content_min-content] items-center">
+              <CardContent className="grid gap-1 grid-cols-[min-content_auto_auto_1fr_max-content_min-content] items-center w-full overflow-hidden">
                 {Object.values(config.connections).map((connection) => (
                   <ConnectionCard
                     key={connection.id}
