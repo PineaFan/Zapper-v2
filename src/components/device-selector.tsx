@@ -272,7 +272,6 @@ export function DeviceCard({
                           className="h-6 w-8"
                           onClick={() => {
                             setIsolatedUser(null);
-                            const deviceKey = `${user.id}-${device.id}`;
                             if (isolateChannel === device.id) {
                               setIsolatedChannel(null);
                               const restoredDevices = new Set<string>();
@@ -288,7 +287,7 @@ export function DeviceCard({
                               setSelectedDevices(restoredDevices);
                             } else {
                               setIsolatedChannel(device.id);
-                              setSelectedDevices(new Set([deviceKey]));
+                              setSelectedDevices(new Set([device.id]));
                             }
                           }}
                         >
