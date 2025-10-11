@@ -18,7 +18,7 @@ import { useDebounce, useLocalStorage } from "react-use";
 import _, { isEqual } from "lodash";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "./ui/skeleton";
-import { ImportExportPanel } from "./import-export";
+import { handleImport, ImportExportPanel } from "./import-export";
 import { v4 } from "uuid";
 import Image from "next/image";
 import { DeviceCard } from "./device-selector";
@@ -26,6 +26,7 @@ import Link from "next/link";
 import { ZapPanel } from "./zap";
 import { generateUrl } from "@/lib/generate-url";
 import { ModeToggle } from "./ui/theme-switcher";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function ConnectionCard({
   config,
@@ -76,6 +77,14 @@ function ConnectionCard({
             size="icon"
             className="ml-2 h-6 w-8 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-red-500 hover:bg-red-600 text-white hover:text-white"
             aria-label="Remove User"
+            onClick={() => {
+              const newConfig = { ...config };
+              delete newConfig.connections[target];
+              if (newConfig.id === target) {
+                newConfig.id = Object.keys(newConfig.connections)[0];
+              }
+              setConfig(newConfig);
+            }}
           >
             <Trash2Icon size={12} />
           </Button>
@@ -140,6 +149,10 @@ function createDefaultConfig(): Config {
 }
 
 export function ControlPanel() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const importCode = searchParams.get("import");
+
   const [mounted, setMounted] = useState(false);
   const [configStorage, setConfigStorage] = useLocalStorage<Config>(
     "user-config",
@@ -170,6 +183,7 @@ export function ControlPanel() {
 
   // Initialize config once configStorage is loaded
   useEffect(() => {
+    if (mounted) return;
     if (!configStorage || config !== null) return;
 
     const migratedConfig =
@@ -184,8 +198,27 @@ export function ControlPanel() {
       setConfigStorage(migratedConfig);
     }
 
+    if (importCode) {
+      fetch(`/api/kv/${importCode}`)
+        .then((result) => result.json())
+        .then((data) => {
+          if (data.error) {
+            console.error("Import Error:", data.error);
+            return;
+          }
+          console.log("Import Data:", data);
+          const result = handleImport(
+            data,
+            ["full", "connection", "device"],
+            migratedConfig
+          );
+          if (result) setConfig(result.config);
+          router.replace("/");
+        });
+    }
+
     setMounted(true);
-  }, [configStorage, config, setConfigStorage]);
+  }, [configStorage, config, setConfigStorage, importCode, mounted, router]);
 
   // Sync config changes to storage
   useEffect(() => {
@@ -198,8 +231,6 @@ export function ControlPanel() {
   const selectedOthersDevices = Array.from(selectedDevices).filter(
     (id) => !id.startsWith(config.id)
   );
-
-  console.log("config", config);
 
   const generateShockArrayFor = (devices: string[]) => {
     const result: { device: Device; webhook: string }[] = [];
@@ -415,7 +446,7 @@ function shockDevices(
   Promise.all(
     targets.map(({ device, webhook }) => {
       const url = generateUrl(webhook, device, shock);
-      return fetch(url);
+      return fetch(url, { credentials: "omit" });
     })
   );
 }
@@ -424,7 +455,7 @@ function stopDevices(targets: { device: Device; webhook: string }[]) {
   Promise.all(
     targets.map(({ device, webhook }) => {
       const url = generateUrl(webhook, device, nullShock, false);
-      return fetch(url);
+      return fetch(url, { credentials: "omit" });
     })
   );
 }
