@@ -14,6 +14,7 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import {
   CheckIcon,
+  ClipboardCheckIcon,
   ClipboardCopyIcon,
   ClipboardPasteIcon,
   ClipboardXIcon,
@@ -27,13 +28,15 @@ import { ShowWhileActive } from "./show-while-active";
 import { Switch } from "./ui/switch";
 import { v4 } from "uuid";
 import _ from "lodash";
-import { ChangeIcon } from "./change-icon";
+import { ChangeIcon, ChangeText } from "./change-icon";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
+import Link from "next/link";
+import { Spinner } from "./ui/spinner";
 
 type SupportedDevices = Array<"device" | "connection" | "full">;
-function handleImport(
-  data: string,
+export function handleImport(
+  data: string | object,
   supportedDevices: SupportedDevices,
   config: Config,
   target?: string
@@ -45,8 +48,12 @@ function handleImport(
 } {
   let json;
   try {
-    const decodedJson = Buffer.from(data, "base64").toString("utf-8");
-    json = JSON.parse(decodedJson);
+    if (typeof data !== "string") {
+      json = data;
+    } else {
+      const decodedJson = Buffer.from(data, "base64").toString("utf-8");
+      json = JSON.parse(decodedJson);
+    }
   } catch (TypeError) {
     console.error("Failed to decode import data:", TypeError);
     return { config, modified: false, status: "Failed to decode" };
@@ -162,7 +169,7 @@ export function ImportExportPanel({
 
   useEffect(() => {
     if (!open) return;
-    const ownDevices = config.connections[config.id]?.devices || [];
+    const ownDevices = config.connections[config.id];
     const deviceData = JSON.stringify(ownDevices);
     const fullData = JSON.stringify(config);
     setDeviceEncoded(Buffer.from(deviceData, "utf-8").toString("base64"));
@@ -276,6 +283,7 @@ export function ImportExportPanel({
               </Button>
             </div>
           </div>
+          <TemporaryComponent devices={deviceEncoded} />
           <div>
             <Label htmlFor="import">Import</Label>
             <div className="w-full flex flex-row gap-2 items-center mt-1">
@@ -439,5 +447,113 @@ export function ImportDeviceButton({
         {showInput ? "" : "Import"}
       </Button>
     </>
+  );
+}
+
+function TemporaryComponent({ devices }: { devices: string }) {
+  const [code, setCode] = useState<string | null>(null);
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "error" | "success" | "copied"
+  >("idle");
+  const [url, setUrl] = useState("");
+  const link = `${url}?import=${code}`;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => setCode(null), [devices]);
+
+  const onClick = () => {
+    if (status === "success") {
+      inputRef.current?.select();
+      try {
+        navigator.clipboard.writeText(link);
+        setStatus("copied");
+      } catch {
+        setStatus("error");
+      }
+      return;
+    }
+    if (status === "loading") return;
+    setStatus("loading");
+    fetch(`/api/kv`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ devices, ttl: 86400 }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        setStatus("success");
+        if (data.key) setCode(data.key);
+      })
+      .catch((err) => {
+        console.error("Failed to generate temporary code:", err);
+        setStatus("error");
+      });
+  };
+
+  useEffect(() => {
+    setUrl(`${window.location.href}`);
+  }, []);
+
+  return (
+    <div>
+      <Label htmlFor="export">Share Import Link</Label>
+      <div className="w-full flex flex-row gap-2 items-center mt-1">
+        <Input
+          id="friend"
+          className="my-1"
+          placeholder="Generate an import link"
+          value={code ? link : ""}
+          readOnly
+          ref={inputRef}
+        />
+        <Button
+          variant={
+            status === "success" || status === "copied"
+              ? "success"
+              : status === "error"
+              ? "default"
+              : "secondary"
+          }
+          onClick={onClick}
+          disabled={(!!code || !devices) && status !== "success"}
+        >
+          <ChangeIcon changeKey={status} withScale>
+            {status === "idle" && <Link2Icon />}
+            {status === "loading" && <Spinner />}
+            {status === "success" && <CheckIcon />}
+            {status === "error" && <XIcon />}
+            {status === "copied" && <ClipboardCheckIcon />}
+          </ChangeIcon>
+          <ChangeText>
+            {status === "success"
+              ? "Copy"
+              : status === "copied"
+              ? "Copied!"
+              : "Generate Code"}
+          </ChangeText>
+        </Button>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        The generated link will last 24 hours. This will give users permanent
+        access to your devices until you change your webhook ID in XToys.
+      </p>
+      <b className="text-muted-foreground text-xs">
+        Your device setup will be sent via{" "}
+        <Link
+          href="https://vercel.com/legal/privacy-policy"
+          className="text-blue-700 dark:text-blue-600 underline visited:text-purple-600"
+        >
+          Vercel
+        </Link>
+        {" and stored with "}
+        <Link
+          href="https://www.cloudflare.com/en-gb/privacypolicy/"
+          className="text-blue-700 dark:text-blue-600 underline visited:text-purple-600"
+        >
+          Cloudflare
+        </Link>
+        .
+      </b>
+    </div>
   );
 }

@@ -39,7 +39,7 @@ export type User = z.infer<typeof UserSchema>;
 export const ConfigSchema = z.object({
     version: z.number().min(1),
     id: z.uuid(),
-    connections: z.record(z.string(), UserSchema),
+    connections: z.record(z.uuid(), UserSchema)
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

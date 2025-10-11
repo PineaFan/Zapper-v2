@@ -24,3 +24,32 @@ export function ChangeIcon({
     </AnimatePresence>
   );
 }
+
+export function ChangeText({
+  changeKey,
+  children,
+}: {
+  changeKey?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <AnimatePresence mode="popLayout">
+      <motion.span
+        key={changeKey || (children as string) || "static"}
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
+        transition={{ duration: 0.2 }}
+        style={{ display: "inline-block" }}
+      >
+        <motion.span
+          layout
+          transition={{ duration: 0.2 }}
+          style={{ display: "inline-block" }}
+        >
+          {children}
+        </motion.span>
+      </motion.span>
+    </AnimatePresence>
+  );
+}
